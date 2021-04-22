@@ -21,10 +21,7 @@ import javafx.stage.Stage;
 import javafx.stage.WindowEvent;
 
 import java.awt.*;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.prefs.Preferences;
@@ -151,8 +148,8 @@ public class AppController {
         apkBtn.setOnAction(new EventHandler<ActionEvent>() {
             @Override
             public void handle(ActionEvent event) {
-                FileChooser fileChooser = new FileChooser();
-                File file = fileChooser.showOpenDialog(parent);
+                DirectoryChooser directoryChooser = new DirectoryChooser();
+                File file = directoryChooser.showDialog(parent);
                 if (file != null) {
                     apkPathTF.setText(file.getAbsolutePath());
                 }
@@ -183,93 +180,49 @@ public class AppController {
             progressView.setVisible(true);
             signBtn.setVisible(false);
             outputTA.setText("");
-            final String cmd = appModel.buildCmd();
-            executorService.submit(new Runnable() {
-                Exception ce = null;
-                InputStreamReader inputStreamReader;
-                BufferedReader bufferedReader;
 
+            final File[] apkFiles = new File(appModel.apkPath).listFiles(new FileFilter() {
+                @Override
+                public boolean accept(File pathname) {
+                    try {
+                        return pathname.getAbsolutePath().endsWith(".apk");
+                    } catch (Exception e) {
+                        return false;
+                    }
+                }
+            });
+            if (apkFiles.length == 0) {
+                throw new Exception();
+            }
+
+            executorService.submit(new Runnable() {
                 @Override
                 public void run() {
                     try {
-                        ProcessBuilder pb = new ProcessBuilder();
-                        if (PlatformUtil.isWindows()) {
-                            pb.command("cmd.exe", "/C", cmd);
-                        } else {
-                            pb.command("/bin/sh", "-c", cmd);
-                        }
-
-
-                        pb.redirectErrorStream(true);
-                        Process p = pb.start();
-
-                        inputStreamReader = new InputStreamReader(p.getInputStream());
-                        bufferedReader = new BufferedReader(inputStreamReader);
-                        String line;
-                        while ((line = bufferedReader.readLine()) != null) {
-                            final String str = line;
+                        for (File apkFile : apkFiles) {
                             try {
-                                Platform.runLater(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        try {
-                                            outputTA.appendText(str);
-                                            outputTA.appendText("\n");
-                                        } catch (Exception e) {
-
-                                        }
-                                    }
-                                });
+                                File signedApkFile = new File(appModel.signedApkPath, apkFile.getName().replace(".apk", "_sign.apk"));
+                                new SignApkRunnable(apkFile, signedApkFile).run();
                             } catch (Exception e) {
 
                             }
                         }
-
-
-                        int exitCode = p.waitFor();
-                        if (exitCode != 0) {
-                            throw new Exception();
-                        }
-
-                    } catch (Exception e) {
-                        ce = e;
-                    }
-                    try {
-                        bufferedReader.close();
                     } catch (Exception e) {
 
                     }
-
-                    try {
-                        inputStreamReader.close();
-                    } catch (Exception e) {
-
-                    }
-
 
                     try {
                         Platform.runLater(new Runnable() {
                             @Override
                             public void run() {
                                 try {
-                                    progressView.setVisible(false);
                                     signBtn.setVisible(true);
-                                    if (ce == null) {
-                                        outputTA.appendText("签名成功");
-                                        try {
-                                            File signedApkFile=new File(appModel.signedApkPath);
-                                            FileChooser fileChooser = new FileChooser();
-                                            fileChooser.setInitialDirectory(signedApkFile.getParentFile());
-                                            fileChooser.showOpenDialog(parent);
-                                        }catch (Exception e){
+                                    progressView.setVisible(false);
+                                    outputTA.appendText("所有apk签名完成\n");
+                                    FileChooser fileChooser = new FileChooser();
+                                    fileChooser.setInitialDirectory(new File(appModel.signedApkPath));
+                                    fileChooser.showOpenDialog(parent);
 
-                                        }
-                                    } else {
-                                        Alert alert = new Alert(Alert.AlertType.ERROR);
-                                        alert.setHeaderText(null);
-                                        alert.setContentText("签名失败:" + ce.getMessage());
-                                        alert.show();
-                                    }
                                 } catch (Exception e) {
 
                                 }
@@ -278,7 +231,6 @@ public class AppController {
                     } catch (Exception e) {
 
                     }
-
 
                 }
             });
@@ -289,6 +241,7 @@ public class AppController {
             alert.show();
         }
     }
+
 
     public void setParent(Stage parent) {
         this.parent = parent;
@@ -347,5 +300,129 @@ public class AppController {
         signedApkPathTF.setText(appModel.signedApkPath);
     }
 
+    public String buildCmd(File apkFile, File signedApkFile) {
+        StringBuilder cmdBuilder = new StringBuilder();
+        cmdBuilder.append(appModel.signToolPath);
+        cmdBuilder.append(" sign --ks ");
+        cmdBuilder.append(appModel.keystorePath);
+        cmdBuilder.append(" --ks-key-alias ");
+        cmdBuilder.append(appModel.keyAlias);
+        cmdBuilder.append(" --ks-pass pass:");
+        cmdBuilder.append(appModel.keystorePW);
+        cmdBuilder.append(" --key-pass pass:");
+        cmdBuilder.append(appModel.keyPW);
+        cmdBuilder.append(" -v --v1-signing-enabled true --v2-signing-enabled true --out ");
+        cmdBuilder.append(signedApkFile.getAbsolutePath());
+        cmdBuilder.append(" ");
+        cmdBuilder.append(apkFile.getAbsolutePath());
+        return cmdBuilder.toString();
+    }
 
+
+    private class SignApkRunnable implements Runnable {
+        File apkFile;
+        File signedApkFile;
+        Exception ce = null;
+        InputStreamReader inputStreamReader;
+        BufferedReader bufferedReader;
+
+        public SignApkRunnable(File apkFile, File signedApkFile) {
+            this.apkFile = apkFile;
+            this.signedApkFile = signedApkFile;
+        }
+
+        @Override
+        public void run() {
+            try {
+                Platform.runLater(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            outputTA.appendText("开始签名:" + apkFile.getName() + "\n");
+                        } catch (Exception e) {
+
+                        }
+                    }
+                });
+            } catch (Exception e) {
+
+            }
+
+            try {
+                String cmd = buildCmd(apkFile, signedApkFile);
+                ProcessBuilder pb = new ProcessBuilder();
+                if (PlatformUtil.isWindows()) {
+                    pb.command("cmd.exe", "/C", cmd);
+                } else {
+                    pb.command("/bin/sh", "-c", cmd);
+                }
+
+
+                pb.redirectErrorStream(true);
+                Process p = pb.start();
+
+                inputStreamReader = new InputStreamReader(p.getInputStream());
+                bufferedReader = new BufferedReader(inputStreamReader);
+                String line;
+                while ((line = bufferedReader.readLine()) != null) {
+                    final String str = line;
+                    try {
+                        Platform.runLater(new Runnable() {
+                            @Override
+                            public void run() {
+                                try {
+                                    outputTA.appendText(str);
+                                    outputTA.appendText("\n");
+                                } catch (Exception e) {
+
+                                }
+                            }
+                        });
+                    } catch (Exception e) {
+
+                    }
+                }
+
+
+                int exitCode = p.waitFor();
+                if (exitCode != 0) {
+                    throw new Exception();
+                }
+
+            } catch (Exception e) {
+                ce = e;
+            }
+            try {
+                bufferedReader.close();
+            } catch (Exception e) {
+
+            }
+
+            try {
+                inputStreamReader.close();
+            } catch (Exception e) {
+
+            }
+
+
+            try {
+                Platform.runLater(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            if (ce == null) {
+                                outputTA.appendText("签名成功\n");
+                            } else {
+                                outputTA.appendText("签名失败:" + ce.getMessage() + "\n");
+                            }
+                        } catch (Exception e) {
+
+                        }
+                    }
+                });
+            } catch (Exception e) {
+
+            }
+        }
+    }
 }

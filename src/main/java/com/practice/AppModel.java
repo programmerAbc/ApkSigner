@@ -21,25 +21,9 @@ public class AppModel {
         if (keystorePW.length() == 0) throw new Exception();
         if (keyAlias.length() == 0) throw new Exception();
         if (keyPW.length() == 0) throw new Exception();
-        if (!Files.exists(new File(apkPath).toPath())) throw new Exception();
+        if (apkPath.length() == 0) throw new Exception();
         if (signedApkPath.length() == 0) throw new Exception();
     }
 
-    public String buildCmd() {
-        StringBuilder cmdBuilder = new StringBuilder();
-        cmdBuilder.append(signToolPath);
-        cmdBuilder.append(" sign --ks ");
-        cmdBuilder.append(keystorePath);
-        cmdBuilder.append(" --ks-key-alias ");
-        cmdBuilder.append(keyAlias);
-        cmdBuilder.append(" --ks-pass pass:");
-        cmdBuilder.append(keystorePW);
-        cmdBuilder.append(" --key-pass pass:");
-        cmdBuilder.append(keyPW);
-        cmdBuilder.append(" -v --v1-signing-enabled true --v2-signing-enabled true --out ");
-        cmdBuilder.append(signedApkPath);
-        cmdBuilder.append(" ");
-        cmdBuilder.append(apkPath);
-        return cmdBuilder.toString();
-    }
+
 }
