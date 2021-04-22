@@ -201,7 +201,7 @@ public class AppController {
                     try {
                         for (File apkFile : apkFiles) {
                             try {
-                                File signedApkFile = new File(appModel.signedApkPath, apkFile.getName().replace(".apk", "_sign.apk"));
+                                File signedApkFile = new File(appModel.signedApkPath, apkFile.getName().replace(".apk", "-sign.apk"));
                                 new SignApkRunnable(apkFile, signedApkFile).run();
                             } catch (Exception e) {
 
