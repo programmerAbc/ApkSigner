@@ -19,7 +19,14 @@ import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.stage.WindowEvent;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
 
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
 import java.awt.*;
 import java.io.*;
 import java.util.concurrent.ExecutorService;
@@ -33,6 +40,17 @@ public class AppController {
 
     ExecutorService executorService = Executors.newSingleThreadExecutor();
 
+    @FXML
+    private TextField renameApkPathTF;
+
+    @FXML
+    private Button renameApkPathBtn;
+
+    @FXML
+    private TextField apkAnalyzerTF;
+
+    @FXML
+    private Button apkAnalyzerBtn;
 
     @FXML
     private Button signToolBtn;
@@ -81,6 +99,19 @@ public class AppController {
         load();
         updateUI();
         progressView.setVisible(false);
+        apkAnalyzerTF.textProperty().addListener(new ChangeListener<String>() {
+            @Override
+            public void changed(ObservableValue<? extends String> observableValue, String oldValue, String newValue) {
+                appModel.apkAnalyzerPath = newValue;
+            }
+        });
+        renameApkPathTF.textProperty().addListener(new ChangeListener<String>() {
+            @Override
+            public void changed(ObservableValue<? extends String> observableValue, String oldValue, String newValue) {
+                appModel.renameApkPath = newValue;
+            }
+        });
+
         signToolTF.textProperty().addListener(new ChangeListener<String>() {
             @Override
             public void changed(ObservableValue<? extends String> observable, String oldValue, String newValue) {
@@ -165,6 +196,30 @@ public class AppController {
                 }
             }
         });
+
+        apkAnalyzerBtn.setOnAction(new EventHandler<ActionEvent>() {
+            @Override
+            public void handle(ActionEvent event) {
+                FileChooser fileChooser = new FileChooser();
+                File file = fileChooser.showOpenDialog(parent);
+                if (file != null) {
+                    apkAnalyzerTF.setText(file.getAbsolutePath());
+                }
+            }
+        });
+
+
+        renameApkPathBtn.setOnAction(new EventHandler<ActionEvent>() {
+            @Override
+            public void handle(ActionEvent event) {
+                DirectoryChooser directoryChooser = new DirectoryChooser();
+                File file = directoryChooser.showDialog(parent);
+                if (file != null) {
+                    renameApkPathTF.setText(file.getAbsolutePath());
+                }
+            }
+        });
+
         signBtn.setOnAction(new EventHandler<ActionEvent>() {
             @Override
             public void handle(ActionEvent event) {
@@ -203,6 +258,7 @@ public class AppController {
                             try {
                                 File signedApkFile = new File(appModel.signedApkPath, apkFile.getName().replace(".apk", "-sign.apk"));
                                 new SignApkRunnable(apkFile, signedApkFile).run();
+                                new RenameApkRunnable(signedApkFile).run();
                             } catch (Exception e) {
 
                             }
@@ -291,6 +347,8 @@ public class AppController {
     }
 
     private void updateUI() {
+        renameApkPathTF.setText(appModel.renameApkPath);
+        apkAnalyzerTF.setText(appModel.apkAnalyzerPath);
         signToolTF.setText(appModel.signToolPath);
         keystoreTF.setText(appModel.keystorePath);
         keystorePWTF.setText(appModel.keystorePW);
@@ -298,24 +356,6 @@ public class AppController {
         keyPWTF.setText(appModel.keyPW);
         apkPathTF.setText(appModel.apkPath);
         signedApkPathTF.setText(appModel.signedApkPath);
-    }
-
-    public String buildCmd(File apkFile, File signedApkFile) {
-        StringBuilder cmdBuilder = new StringBuilder();
-        cmdBuilder.append(appModel.signToolPath);
-        cmdBuilder.append(" sign --ks ");
-        cmdBuilder.append(appModel.keystorePath);
-        cmdBuilder.append(" --ks-key-alias ");
-        cmdBuilder.append(appModel.keyAlias);
-        cmdBuilder.append(" --ks-pass pass:");
-        cmdBuilder.append(appModel.keystorePW);
-        cmdBuilder.append(" --key-pass pass:");
-        cmdBuilder.append(appModel.keyPW);
-        cmdBuilder.append(" -v --v1-signing-enabled true --v2-signing-enabled true --out ");
-        cmdBuilder.append(signedApkFile.getAbsolutePath());
-        cmdBuilder.append(" ");
-        cmdBuilder.append(apkFile.getAbsolutePath());
-        return cmdBuilder.toString();
     }
 
 
@@ -329,6 +369,24 @@ public class AppController {
         public SignApkRunnable(File apkFile, File signedApkFile) {
             this.apkFile = apkFile;
             this.signedApkFile = signedApkFile;
+        }
+
+        public String buildCmd(File apkFile, File signedApkFile) {
+            StringBuilder cmdBuilder = new StringBuilder();
+            cmdBuilder.append(appModel.signToolPath);
+            cmdBuilder.append(" sign --ks ");
+            cmdBuilder.append(appModel.keystorePath);
+            cmdBuilder.append(" --ks-key-alias ");
+            cmdBuilder.append(appModel.keyAlias);
+            cmdBuilder.append(" --ks-pass pass:");
+            cmdBuilder.append(appModel.keystorePW);
+            cmdBuilder.append(" --key-pass pass:");
+            cmdBuilder.append(appModel.keyPW);
+            cmdBuilder.append(" -v --v1-signing-enabled true --v2-signing-enabled true --out ");
+            cmdBuilder.append(signedApkFile.getAbsolutePath());
+            cmdBuilder.append(" ");
+            cmdBuilder.append(apkFile.getAbsolutePath());
+            return cmdBuilder.toString();
         }
 
         @Override
@@ -425,4 +483,167 @@ public class AppController {
             }
         }
     }
+
+    private class RenameApkRunnable implements Runnable {
+        File apkFile;
+        File outputDir;
+        Exception ce = null;
+        InputStreamReader inputStreamReader;
+        BufferedReader bufferedReader;
+
+        public RenameApkRunnable(File apkFile) {
+            this.apkFile = apkFile;
+            this.outputDir = new File(appModel.renameApkPath);
+        }
+
+
+        public ProcessBuilder buildCmd(File apkFile, File targetDir) {
+            ProcessBuilder processBuilder = new ProcessBuilder();
+            processBuilder.command("java", "-jar", appModel.apkAnalyzerPath, "d", apkFile.getAbsolutePath(),"--force" ,"--force-manifest", "--keep-broken-res", "--no-assets", "--no-res", "--no-src", "--output", targetDir.getAbsolutePath());
+            return processBuilder;
+        }
+
+        public String extractNameFromXML(File file) throws Exception {
+            DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+            // parse XML file
+            DocumentBuilder db = dbf.newDocumentBuilder();
+            Document doc = db.parse(file);
+            doc.getDocumentElement().normalize();
+            NodeList list = doc.getElementsByTagName("meta-data");
+            for (int temp = 0; temp < list.getLength(); temp++) {
+                Node node = list.item(temp);
+                if (node.getNodeType() == Node.ELEMENT_NODE) {
+                    Element element = (Element) node;
+                    // get staff's attribute
+                    String name = element.getAttribute("android:name");
+                    if (!name.equalsIgnoreCase("BaiduMobAd_CHANNEL")) {
+                        continue;
+                    }
+                    return element.getAttribute("android:value");
+                }
+            }
+            throw new Exception("xml解析错误,无法提取渠道名称");
+
+        }
+
+        @Override
+        public void run() {
+            try {
+                Platform.runLater(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            outputTA.appendText("开始重命名:" + apkFile.getName() + "\n开始解析AndroidManifest.xml");
+                        } catch (Exception e) {
+
+                        }
+                    }
+                });
+            } catch (Exception e) {
+
+            }
+
+            try {
+                File targetDir = new File(outputDir, apkFile.getName());
+                try {
+                    RxFileTool.createOrExistsDir(targetDir);
+                } catch (Exception e) {
+
+                }
+
+                try {
+                    RxFileTool.deleteFilesInDir(targetDir);
+                } catch (Exception e) {
+
+                }
+                ProcessBuilder pb = buildCmd(apkFile, targetDir);
+                pb.redirectErrorStream(true);
+                Process p = pb.start();
+
+                inputStreamReader = new InputStreamReader(p.getInputStream());
+                bufferedReader = new BufferedReader(inputStreamReader);
+                String line;
+                while ((line = bufferedReader.readLine()) != null) {
+                    final String str = line;
+                    try {
+                        Platform.runLater(new Runnable() {
+                            @Override
+                            public void run() {
+                                try {
+                                    outputTA.appendText(str);
+                                    outputTA.appendText("\n");
+                                } catch (Exception e) {
+
+                                }
+                            }
+                        });
+                    } catch (Exception e) {
+
+                    }
+                }
+                int exitCode = p.waitFor();
+                if (exitCode != 0) {
+                    throw new Exception();
+                }
+
+
+                File androidManifest = new File(targetDir, "AndroidManifest.xml");
+                String channel = extractNameFromXML(androidManifest);
+                if (channel == null || channel.isEmpty()) throw new Exception("从AndroidManifest.xml提取渠道名称失败");
+
+                try {
+                    Platform.runLater(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                outputTA.appendText("解析AndroidManifest.xml成功,渠道名称为:" + channel + "开始重命名:" + apkFile.getName() + "\n");
+                            } catch (Exception e) {
+
+                            }
+                        }
+                    });
+                } catch (Exception e) {
+
+                }
+
+
+                File targetFile = new File(targetDir, channel + "-sign.apk");
+                RxFileTool.copyFile(apkFile, targetFile);
+            } catch (Exception e) {
+                ce = e;
+            }
+            try {
+                bufferedReader.close();
+            } catch (Exception e) {
+
+            }
+
+            try {
+                inputStreamReader.close();
+            } catch (Exception e) {
+
+            }
+
+
+            try {
+                Platform.runLater(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            if (ce == null) {
+                                outputTA.appendText("重命名成功\n");
+                            } else {
+                                outputTA.appendText("重命名失败:" + ce.getMessage() + "\n");
+                            }
+                        } catch (Exception e) {
+
+                        }
+                    }
+                });
+            } catch (Exception e) {
+
+            }
+        }
+    }
+
 }
