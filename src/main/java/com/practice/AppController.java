@@ -276,7 +276,7 @@ public class AppController {
                                     progressView.setVisible(false);
                                     outputTA.appendText("所有apk签名完成\n");
                                     FileChooser fileChooser = new FileChooser();
-                                    fileChooser.setInitialDirectory(new File(appModel.signedApkPath));
+                                    fileChooser.setInitialDirectory(new File(appModel.renameApkPath));
                                     fileChooser.showOpenDialog(parent);
 
                                 } catch (Exception e) {
@@ -588,9 +588,15 @@ public class AppController {
 
 
                 File androidManifest = new File(targetDir, "AndroidManifest.xml");
+                String content=RxFileTool.readFile2String(androidManifest,"UTF-8");
                 String channel = extractNameFromXML(androidManifest);
                 if (channel == null || channel.isEmpty()) throw new Exception("从AndroidManifest.xml提取渠道名称失败");
+                try {
+                    RxFileTool.deleteFilesInDir(targetDir);
+                } catch (Exception e) {
 
+                }
+                RxFileTool.writeFileFromString(new File(targetDir,"AndroidManifest.xml"),content,false);
                 try {
                     Platform.runLater(new Runnable() {
                         @Override
@@ -605,6 +611,7 @@ public class AppController {
                 } catch (Exception e) {
 
                 }
+
 
 
                 File targetFile = new File(targetDir, channel + "-sign.apk");
