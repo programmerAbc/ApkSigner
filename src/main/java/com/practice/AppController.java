@@ -534,7 +534,7 @@ public class AppController {
                     @Override
                     public void run() {
                         try {
-                            outputTA.appendText("开始重命名:" + apkFile.getName() + "\n开始解析AndroidManifest.xml");
+                            outputTA.appendText("开始重命名:" + apkFile.getName() + "\n开始解析AndroidManifest.xml\n");
                         } catch (Exception e) {
 
                         }
@@ -596,7 +596,7 @@ public class AppController {
                         @Override
                         public void run() {
                             try {
-                                outputTA.appendText("解析AndroidManifest.xml成功,渠道名称为:" + channel + "开始重命名:" + apkFile.getName() + "\n");
+                                outputTA.appendText("解析AndroidManifest.xml成功\n渠道名称为:" + channel + "\n开始重命名:" + apkFile.getName() + "\n");
                             } catch (Exception e) {
 
                             }
