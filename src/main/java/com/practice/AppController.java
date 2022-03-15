@@ -499,7 +499,8 @@ public class AppController {
 
         public ProcessBuilder buildCmd(File apkFile, File targetDir) {
             ProcessBuilder processBuilder = new ProcessBuilder();
-            processBuilder.command("java", "-jar", appModel.apkAnalyzerPath, "d", apkFile.getAbsolutePath(),"--force" ,"--force-manifest", "--keep-broken-res", "--no-assets", "--no-res", "--no-src", "--output", targetDir.getAbsolutePath());
+            processBuilder.command("bash.exe", appModel.apkAnalyzerPath, "manifest", "print", apkFile.getAbsolutePath());
+            processBuilder.redirectOutput(new File(targetDir,"AndroidManifest.xml"));
             return processBuilder;
         }
 
@@ -557,10 +558,10 @@ public class AppController {
 
                 }
                 ProcessBuilder pb = buildCmd(apkFile, targetDir);
-                pb.redirectErrorStream(true);
+                pb.redirectErrorStream(false);
                 Process p = pb.start();
 
-                inputStreamReader = new InputStreamReader(p.getInputStream());
+                inputStreamReader = new InputStreamReader(p.getErrorStream());
                 bufferedReader = new BufferedReader(inputStreamReader);
                 String line;
                 while ((line = bufferedReader.readLine()) != null) {
@@ -588,15 +589,8 @@ public class AppController {
 
 
                 File androidManifest = new File(targetDir, "AndroidManifest.xml");
-                String content=RxFileTool.readFile2String(androidManifest,"UTF-8");
                 String channel = extractNameFromXML(androidManifest);
                 if (channel == null || channel.isEmpty()) throw new Exception("从AndroidManifest.xml提取渠道名称失败");
-                try {
-                    RxFileTool.deleteFilesInDir(targetDir);
-                } catch (Exception e) {
-
-                }
-                RxFileTool.writeFileFromString(new File(targetDir,"AndroidManifest.xml"),content,false);
                 try {
                     Platform.runLater(new Runnable() {
                         @Override
@@ -611,7 +605,6 @@ public class AppController {
                 } catch (Exception e) {
 
                 }
-
 
 
                 File targetFile = new File(targetDir, channel + "-sign.apk");
